@@ -4,69 +4,62 @@
 #include <ESP8266WiFi.h>
 #include <WiFiClientSecure.h>
 
-// Device location
-#ID 1
-#LAT 4.60971
-#LON -74.08175
-
 const char *ssid = "";
 const char *password = "";
-
 const char *server = "smart-weather-station-ft-ud-default-rtdb.firebaseio.com";
-
 const int httpsPort = 443;
-
-//const char *endpoint* = "/prueba.json?auth=ACA_VA_EL_TOKEN_DE_FIREBASE; prueba es el nombre de la base de datos
-const char *endpoint = "/smwfud.json?auth="; //  ACA_VA_EL_TOKEN_DE_FIREBASE despues del signo de igual
-
+const char *endpoint = "/data/FT002.json?auth=";
 // openssl s_client -connect smart-weather-station-ft-ud-default-rtdb.firebaseio.com:443 < /dev/null | openssl x509 -noout -fingerprint -sha1
-const char *fingerprint = "91144184c3f8489d29568cd43543f6b853f1fefe";
+const char *fingerprint = "";
+const char* ntpServer = "pool.ntp.org";
 
-String getData(int ID, time_t now, float temperature, float humidity, float pressure, float speed, float gas, float precipitation, float LAT, float LON) {
-  // Create a JSON object
-  StaticJsonDocument<200> data;
-  data["id"] = ID;
-  data["date"] = now;
-  data["temperature"] = temperature;
-  data["humidity"] = humidity;
-  data["pressure"] = pressure;
-  data["speed"] = speed;
-  data["gas"] = gas;
-  data["precipitation"] = precipitation;
-  data["lat"] = LAT;
-  data["lon"] = LON;
+WiFiClientSecure client;
+HTTPClient https;
 
-  // Serialize the JSON object to a string
-  String jsonData;
-  serializeJson(data, jsonData);
-
-  // Return the JSON string
-  return jsonData;
+unsigned long getTime() {
+  time_t now;
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    return(0);
+  }
+  time(&now);
+  return now;
 }
 
-void setup() {
-  Serial.begin(115200);
-  delay(1000);
+String buildJsonData(int date, float carbonGas, float pm10Particles, float precipitation, float relativeHumidity, float solarRadation, float temperature, float wind) {
+  String stringDate = String(date);
+  StaticJsonDocument<300> doc;
+  JsonObject data = doc.createNestedObject(stringDate);
 
-  WiFi.begin(ssid, password);
+  data["carbonGas"] = carbonGas;
+  data["date"] = date;
+  data["pm10Particles"] = pm10Particles;
+  data["precipitation"] = precipitation;
+  data["relativeHumidity"] = relativeHumidity;
+  data["solarRadation"] = solarRadation;
+  data["temperature"] = temperature;
+  data["wind"] = wind;
 
-  while (WiFi.status() != WL_CONNECTED) {
-    Serial.println("Connecting to WiFi...");
-    delay(1000);
-  }
-  Serial.println("Connected to WiFi");
+  String serializedData;
+  serializeJson(doc, serializedData);
 
-  WiFiClientSecure client;
-  HTTPClient https;
+  return serializedData;
+}
 
+void sendWeatherMeasure(float carbonGas, float pm10Particles, float precipitation, float relativeHumidity, float solarRadation, float temperature, float wind) {
+  unsigned long timestamp = getTime();
+  int timestampInt = static_cast<int>(timestamp);
   client.setFingerprint(fingerprint);
   https.begin(client, server, httpsPort, endpoint);
   https.addHeader("Content-Type", "application/json");
 
   StaticJsonDocument<200> data;
-  String jsonData = getData(1, 1620000000, 25.5, 50.5, 1000.5, 10.5, 100.5, 0.5, 4.60971, -74.08175);
-  
-  int httpResponseCode = https.POST(jsonData);
+  String jsonData = buildJsonData(timestampInt, carbonGas, pm10Particles, precipitation, relativeHumidity, solarRadation, temperature, wind);
+
+  Serial.print("JSON data: ");
+  Serial.println(jsonData);
+
+  int httpResponseCode = https.PATCH(jsonData);
   if (httpResponseCode > 0) {
     Serial.print("HTTP response code: ");
     Serial.println(httpResponseCode);
@@ -81,6 +74,21 @@ void setup() {
   https.end();
 }
 
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
 
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Connecting to WiFi...");
+    delay(1000);
+  }
+
+  Serial.println("Connected to WiFi");
+  configTime(0, 0, ntpServer);
+
+  // Move to loop
+  sendWeatherMeasure(6.66, 6.66, 6.66, 6.66, 6.66, 6.66, 6.66);
+}
 
 void loop() {}
